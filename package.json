@@ -1,0 +1,36 @@
+{
+  "name": "@cumthqb/contact-graph",
+  "version": "1.0.0",
+  "description": "人脉关系图数据库 - Neo4j 版（联系人与关系管理 CLI/SDK）",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "contact-graph": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "node ./node_modules/typescript/bin/tsc",
+    "dev": "node ./node_modules/typescript/bin/tsc --watch",
+    "start": "node dist/cli.js",
+    "test": "jest"
+  },
+  "keywords": [
+    "neo4j",
+    "graph-database",
+    "contact-management",
+    "crm",
+    "relationship"
+  ],
+  "author": "Open source contributors",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "neo4j-driver": "^5.15.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
