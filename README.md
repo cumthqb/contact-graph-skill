@@ -43,10 +43,9 @@ npx contact-graph init
 npx contact-graph add "张三" --company "ABC科技" --title "技术总监"
 ```
 
-更多命令与示例见 [SKILL.md](file:///Users/hanqingbin/Documents/Workspace/skills/contact-graph-skill/SKILL.md)。
+更多命令与示例见 [SKILL.md](./SKILL.md)。
 
 ## 安全与隐私
 
 - 不要将真实人脉数据、Neo4j 密码或连接信息提交到仓库/Issue/日志
 - 建议为该工具创建专用 Neo4j 用户并最小化权限
-
