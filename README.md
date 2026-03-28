@@ -15,6 +15,21 @@ npm install
 npm run build
 ```
 
+## 在 OpenClaw 中安装
+
+OpenClaw 的 “Skill” 是一个包含 `SKILL.md` 的文件夹；而 `contact-graph` 是被 Skill 指引去调用的 CLI。也就是说：安装成 “CLI 命令” 不会自动出现在 Skill 列表里。
+
+把本仓库克隆/放到以下任意目录即可被识别为 Skill（重启会话或刷新后生效）：
+
+- `<workspace>/skills/contact-graph`（推荐：仅对该 workspace 生效）
+- `~/.openclaw/skills/contact-graph`（全局生效）
+
+示例：
+
+```bash
+git clone https://github.com/cumthqb/contact-graph-skill.git <workspace>/skills/contact-graph
+```
+
 配置环境变量（密码必须配置）：
 
 - CONTACT_GRAPH_NEO4J_URI（默认：bolt://localhost:7687）
