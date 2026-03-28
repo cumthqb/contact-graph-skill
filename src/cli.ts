@@ -120,6 +120,135 @@ program
     await db.close();
   });
 
+program
+  .command('add-resource-person <person> <resource>')
+  .description('为联系人添加资源')
+  .option('--category <category>', '资源类别')
+  .option('--desc <desc>', '资源描述')
+  .option('--contact <contact>', '联系方式/对接人')
+  .option('--link <link>', '链接')
+  .option('--note <note>', '备注')
+  .option('--tags <tags>', '标签，用逗号分隔')
+  .action(async (person, resource, options) => {
+    const db = await getDB(program.opts());
+    const result = await db.addResourceToPerson(person, {
+      name: resource,
+      category: options.category,
+      description: options.desc,
+      contact: options.contact,
+      link: options.link,
+      note: options.note,
+      tags: options.tags ? options.tags.split(',') : []
+    });
+    if (!result) {
+      console.log(`❌ 未找到联系人: ${person}`);
+    } else {
+      console.log(`✅ 资源 RID: ${result.rid}`);
+    }
+    await db.close();
+  });
+
+program
+  .command('add-resource-company <company> <resource>')
+  .description('为公司添加资源')
+  .option('--category <category>', '资源类别')
+  .option('--desc <desc>', '资源描述')
+  .option('--contact <contact>', '联系方式/对接人')
+  .option('--link <link>', '链接')
+  .option('--note <note>', '备注')
+  .option('--tags <tags>', '标签，用逗号分隔')
+  .action(async (company, resource, options) => {
+    const db = await getDB(program.opts());
+    const result = await db.addResourceToCompany(company, {
+      name: resource,
+      category: options.category,
+      description: options.desc,
+      contact: options.contact,
+      link: options.link,
+      note: options.note,
+      tags: options.tags ? options.tags.split(',') : []
+    });
+    if (!result) {
+      console.log(`❌ 未找到公司: ${company}`);
+    } else {
+      console.log(`✅ 资源 RID: ${result.rid}`);
+    }
+    await db.close();
+  });
+
+program
+  .command('resources <name>')
+  .description('查看某个联系人/公司的资源列表')
+  .option('-t, --type <type>', 'owner 类型: person|company', 'person')
+  .action(async (name, options) => {
+    const db = await getDB(program.opts());
+    const type = (options.type || 'person').toLowerCase();
+    const resources =
+      type === 'company'
+        ? await db.listResourcesForCompany(name)
+        : await db.listResourcesForPerson(name);
+
+    if (resources.length === 0) {
+      console.log('❌ 暂无资源记录');
+    } else {
+      console.log(`\n🧩 资源 (${resources.length}):`);
+      console.log('-'.repeat(60));
+      resources.forEach(r => {
+        const tags = r.tags ? r.tags.join(',') : '';
+        console.log(`  - ${r.name} | ${r.category || ''} | [${tags}] | RID: ${r.rid}`);
+      });
+    }
+    await db.close();
+  });
+
+program
+  .command('search-resources <keyword>')
+  .description('搜索资源（按名称/类别/描述/标签/备注）')
+  .action(async (keyword) => {
+    const db = await getDB(program.opts());
+    const results = await db.searchResources(keyword);
+    if (results.length === 0) {
+      console.log('❌ 未找到匹配资源');
+    } else {
+      console.log(`\n🔍 找到 ${results.length} 个资源:`);
+      console.log('-'.repeat(60));
+      results.forEach(item => {
+        const r = item.resource;
+        const owners = item.owners.map(o => `${o.name}`).join('、');
+        const tags = r.tags ? r.tags.join(',') : '';
+        console.log(`  - ${r.name} | ${r.category || ''} | [${tags}] | RID: ${r.rid}${owners ? ` | 归属: ${owners}` : ''}`);
+      });
+    }
+    await db.close();
+  });
+
+program
+  .command('resource <rid>')
+  .description('查看资源详情')
+  .action(async (rid) => {
+    const db = await getDB(program.opts());
+    const result = await db.getResourceById(rid);
+    if (!result) {
+      console.log(`❌ 未找到资源: ${rid}`);
+      await db.close();
+      return;
+    }
+    const r = result.resource;
+    console.log(`\n🧩 ${r.name}`);
+    console.log('-'.repeat(60));
+    console.log(`  rid: ${r.rid}`);
+    if (r.category) console.log(`  category: ${r.category}`);
+    if (r.description) console.log(`  description: ${r.description}`);
+    if (r.contact) console.log(`  contact: ${r.contact}`);
+    if (r.link) console.log(`  link: ${r.link}`);
+    if (r.note) console.log(`  note: ${r.note}`);
+    if (r.tags && r.tags.length > 0) console.log(`  tags: ${r.tags.join(',')}`);
+    if (result.owners.length > 0) {
+      console.log(`  owners: ${result.owners.map(o => o.name).join('、')}`);
+    }
+    await db.close();
+  });
+
 // Add interaction command
 program
   .command('note <name> <note>')

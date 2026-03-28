@@ -33,6 +33,25 @@ export interface CompanyNode {
   created_at?: string;
 }
 
+export interface ResourceNode {
+  rid: string;
+  type: 'resource';
+  name: string;
+  category?: string;
+  description?: string;
+  tags?: string[];
+  contact?: string;
+  link?: string;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ResourceWithOwners {
+  resource: ResourceNode;
+  owners: Array<{ name: string; type: string }>;
+}
+
 export interface Relationship {
   from: string;
   to: string;
@@ -48,6 +67,7 @@ export interface Relationship {
 export interface DBStats {
   总人数: number;
   公司数: number;
+  资源数: number;
   人脉关系数: number;
   总连接数: number;
 }
@@ -94,6 +114,14 @@ export class ContactGraphDB {
       await session.run(`
         CREATE CONSTRAINT company_name IF NOT EXISTS 
         FOR (c:Company) REQUIRE c.name IS UNIQUE
+      `);
+      await session.run(`
+        CREATE CONSTRAINT resource_rid IF NOT EXISTS
+        FOR (r:Resource) REQUIRE r.rid IS UNIQUE
+      `);
+      await session.run(`
+        CREATE INDEX resource_name IF NOT EXISTS
+        FOR (r:Resource) ON (r.name)
       `);
       console.log('✅ 约束已创建');
     } catch (error) {
@@ -241,6 +269,192 @@ export class ContactGraphDB {
     }
   }
 
+  async addResourceToPerson(
+    person: string,
+    resource: {
+      name: string;
+      category?: string;
+      description?: string;
+      tags?: string[];
+      contact?: string;
+      link?: string;
+      note?: string;
+    }
+  ): Promise<ResourceNode | null> {
+    const session = this.driver.session();
+    const now = new Date().toISOString();
+
+    try {
+      const result = await session.run(
+        `
+        MATCH (p:Person {name: $person})
+        CREATE (r:Resource {
+          rid: randomUUID(),
+          type: 'resource',
+          name: $name,
+          category: $category,
+          description: $description,
+          tags: $tags,
+          contact: $contact,
+          link: $link,
+          note: $note,
+          created_at: $now,
+          updated_at: $now
+        })
+        MERGE (p)-[:HAS_RESOURCE]->(r)
+        RETURN r
+        `,
+        { person, ...resource, tags: resource.tags || [], now }
+      );
+      const record = result.records[0];
+      if (!record) {
+        return null;
+      }
+      console.log(`✅ 已添加资源: ${person} -> ${resource.name}`);
+      return record.get('r').properties as ResourceNode;
+    } catch (error) {
+      console.log(`❌ 添加资源失败: ${error}`);
+      return null;
+    } finally {
+      await session.close();
+    }
+  }
+
+  async addResourceToCompany(
+    company: string,
+    resource: {
+      name: string;
+      category?: string;
+      description?: string;
+      tags?: string[];
+      contact?: string;
+      link?: string;
+      note?: string;
+    }
+  ): Promise<ResourceNode | null> {
+    const session = this.driver.session();
+    const now = new Date().toISOString();
+
+    try {
+      const result = await session.run(
+        `
+        MATCH (c:Company {name: $company})
+        CREATE (r:Resource {
+          rid: randomUUID(),
+          type: 'resource',
+          name: $name,
+          category: $category,
+          description: $description,
+          tags: $tags,
+          contact: $contact,
+          link: $link,
+          note: $note,
+          created_at: $now,
+          updated_at: $now
+        })
+        MERGE (c)-[:HAS_RESOURCE]->(r)
+        RETURN r
+        `,
+        { company, ...resource, tags: resource.tags || [], now }
+      );
+      const record = result.records[0];
+      if (!record) {
+        return null;
+      }
+      console.log(`✅ 已添加资源: ${company} -> ${resource.name}`);
+      return record.get('r').properties as ResourceNode;
+    } catch (error) {
+      console.log(`❌ 添加资源失败: ${error}`);
+      return null;
+    } finally {
+      await session.close();
+    }
+  }
+
+  async listResourcesForPerson(person: string): Promise<ResourceNode[]> {
+    const session = this.driver.session();
+    try {
+      const result = await session.run(
+        `
+        MATCH (p:Person {name: $person})-[:HAS_RESOURCE]->(r:Resource)
+        RETURN r
+        ORDER BY coalesce(r.category, ''), r.name
+        `,
+        { person }
+      );
+      return result.records.map(r => r.get('r').properties as ResourceNode);
+    } finally {
+      await session.close();
+    }
+  }
+
+  async listResourcesForCompany(company: string): Promise<ResourceNode[]> {
+    const session = this.driver.session();
+    try {
+      const result = await session.run(
+        `
+        MATCH (c:Company {name: $company})-[:HAS_RESOURCE]->(r:Resource)
+        RETURN r
+        ORDER BY coalesce(r.category, ''), r.name
+        `,
+        { company }
+      );
+      return result.records.map(r => r.get('r').properties as ResourceNode);
+    } finally {
+      await session.close();
+    }
+  }
+
+  async getResourceById(rid: string): Promise<ResourceWithOwners | null> {
+    const session = this.driver.session();
+    try {
+      const result = await session.run(
+        `
+        MATCH (r:Resource {rid: $rid})
+        OPTIONAL MATCH (o)-[:HAS_RESOURCE]->(r)
+        RETURN r, collect({name: o.name, type: o.type}) AS owners
+        `,
+        { rid }
+      );
+      const record = result.records[0];
+      if (!record) {
+        return null;
+      }
+      return {
+        resource: record.get('r').properties as ResourceNode,
+        owners: (record.get('owners') as Array<{ name: string; type: string }>).filter(o => o?.name)
+      };
+    } finally {
+      await session.close();
+    }
+  }
+
+  async searchResources(keyword: string): Promise<ResourceWithOwners[]> {
+    const session = this.driver.session();
+    try {
+      const result = await session.run(
+        `
+        MATCH (r:Resource)
+        WHERE r.name CONTAINS $keyword
+           OR r.category CONTAINS $keyword
+           OR r.description CONTAINS $keyword
+           OR r.note CONTAINS $keyword
+           OR ANY(tag IN r.tags WHERE tag CONTAINS $keyword)
+        OPTIONAL MATCH (o)-[:HAS_RESOURCE]->(r)
+        RETURN r, collect({name: o.name, type: o.type}) AS owners
+        ORDER BY coalesce(r.category, ''), r.name
+        `,
+        { keyword }
+      );
+      return result.records.map(record => ({
+        resource: record.get('r').properties as ResourceNode,
+        owners: (record.get('owners') as Array<{ name: string; type: string }>).filter(o => o?.name)
+      }));
+    } finally {
+      await session.close();
+    }
+  }
+
   async addInteraction(person: string, note: string, date?: string): Promise<void> {
     const session = this.driver.session();
     const interactionDate = date || new Date().toISOString().split('T')[0];
@@ -368,6 +582,7 @@ export class ContactGraphDB {
     try {
       const personCount = await session.run('MATCH (p:Person) RETURN count(p) AS count');
       const companyCount = await session.run('MATCH (c:Company) RETURN count(c) AS count');
+      const resourceCount = await session.run('MATCH (r:Resource) RETURN count(r) AS count');
       const totalEdges = await session.run('MATCH ()-[r]->() RETURN count(r) AS count');
       const personEdges = await session.run(
         'MATCH (p1:Person)-[r]-(p2:Person) RETURN count(r) AS count'
@@ -376,6 +591,7 @@ export class ContactGraphDB {
       return {
         总人数: personCount.records[0].get('count').toNumber(),
         公司数: companyCount.records[0].get('count').toNumber(),
+        资源数: resourceCount.records[0].get('count').toNumber(),
         人脉关系数: personEdges.records[0].get('count').toNumber(),
         总连接数: totalEdges.records[0].get('count').toNumber()
       };
@@ -432,13 +648,33 @@ export class ContactGraphDB {
         lines.push(`CREATE (${varName}:Company {${props}})`);
       });
 
+      // Export resources
+      const resources = await session.run('MATCH (r:Resource) RETURN r');
+      resources.records.forEach(rec => {
+        const r = rec.get('r');
+        const props = Object.entries(r.properties)
+          .filter(([k, v]) => k !== 'type' && v !== undefined && v !== null)
+          .map(([k, v]) => `${k}: '${String(v).replace(/'/g, "\\'")}'`)
+          .join(', ');
+        const varName = `resource_${String(r.properties.rid).replace(/[^a-zA-Z0-9]/g, '_')}`;
+        lines.push(`CREATE (${varName}:Resource {${props}})`);
+      });
+
       // Export relationships
       const rels = await session.run('MATCH (a)-[r]->(b) RETURN a, r, b, type(r) AS relType');
-      rels.records.forEach(r => {
-        const a = r.get('a').properties.name.replace(/[^a-zA-Z0-9]/g, '_');
-        const b = r.get('b').properties.name.replace(/[^a-zA-Z0-9]/g, '_');
-        const relType = r.get('relType');
-        const rel = r.get('r');
+      rels.records.forEach(rec => {
+        const aNode = rec.get('a');
+        const bNode = rec.get('b');
+        const a =
+          aNode.labels?.includes('Resource')
+            ? `resource_${String(aNode.properties.rid).replace(/[^a-zA-Z0-9]/g, '_')}`
+            : String(aNode.properties.name).replace(/[^a-zA-Z0-9]/g, '_');
+        const b =
+          bNode.labels?.includes('Resource')
+            ? `resource_${String(bNode.properties.rid).replace(/[^a-zA-Z0-9]/g, '_')}`
+            : String(bNode.properties.name).replace(/[^a-zA-Z0-9]/g, '_');
+        const relType = rec.get('relType');
+        const rel = rec.get('r');
         const props = Object.entries(rel.properties)
           .filter(([k, v]) => v !== undefined && v !== null)
           .map(([k, v]) => `${k}: '${String(v).replace(/'/g, "\\'")}'`)
